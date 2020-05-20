@@ -62,6 +62,7 @@ void DMOFilter::deinit()
 		m_pObject->Release();
 		m_pObject = nullptr;
 	}
+	CoUninitialize();
 }
 
 void DMOFilter::init(int samplerate, int filter_type, int num_channels)
@@ -70,6 +71,7 @@ void DMOFilter::init(int samplerate, int filter_type, int num_channels)
 	WAVEFORMATEX wfx;
 	CLSID clsid1;
 	CLSIDFromString(CComBSTR(knownDMOs[filter_type]), &clsid1);
+	CoInitializeEx(NULL, COINIT_MULTITHREADED);
 	HRESULT hr = CoCreateInstance(clsid1,
 		NULL,
 		CLSCTX_INPROC_SERVER,

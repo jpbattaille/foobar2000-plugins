@@ -56,6 +56,7 @@ class dsp_pitch : public dsp_impl_base
 	int m_rate, m_ch, m_ch_mask;
 	float pitch_amount;
 	bool st_enabled;
+	metadb_handle_ptr current_track;
 
 public:
 	dsp_pitch(dsp_preset const & in) : pitch_amount(0.00), m_rate(0), m_ch(0), m_ch_mask(0)
@@ -136,6 +137,20 @@ public:
 				p_soundtouch->setSetting(SETTING_USE_QUICKSEEK, true);
 				p_soundtouch->setSetting(SETTING_USE_AA_FILTER, useaafilter);
 			}
+			get_cur_file(current_track);
+			if (current_track != NULL) {
+				service_ptr_t<metadb_info_container> out;
+				current_track->get_info_ref(out);
+				const file_info& file_inf = out->info();
+				if (file_inf.meta_exists("pitch_amt"))
+				{
+					const char* meta = file_inf.meta_get("pitch_amt", 0);
+					double pitch2 = pfc::string_to_float(meta, strlen("pitch_amt"));
+					p_soundtouch->setPitchSemiTones(pitch2);
+				}
+			}
+
+
 		}
 
 

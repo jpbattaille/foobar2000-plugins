@@ -1,8 +1,8 @@
 #include "../helpers/foobar2000+atl.h"
 #include "../../libPPUI/win32_utility.h"
 #include "../../libPPUI/win32_op.h" // WIN32_OP()
-#include "../helpers/BumpableElem.h"
 #include "../helpers/atl-misc.h"// ui_element_impl
+#include "../helpers/BumpableElem.h"
 #include "dmodsp.h"
 #include "resource.h"
 

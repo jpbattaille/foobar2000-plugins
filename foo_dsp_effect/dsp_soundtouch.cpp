@@ -7,6 +7,8 @@
 #include "rubberband/rubberband/RubberBandStretcher.h"
 #include "circular_buffer.h"
 #include "dsp_guids.h"
+
+#include <memory>
 using namespace soundtouch;
 using namespace RubberBand;
 
@@ -70,7 +72,6 @@ public:
 		if (p_soundtouch)
 		{
 			p_soundtouch->clear();
-			delete[] buffer_;
 			buffer_ = NULL;
 			delete p_soundtouch;
 			p_soundtouch = 0;
@@ -120,11 +121,8 @@ public:
 			m_ch_mask = chunk->get_channel_config();
 			if (p_soundtouch)
 			{
-				delete[] buffer_;
 				delete p_soundtouch;
 			}
-
-			buffer_ = new float[BUFFER_SIZE*m_ch];
 			p_soundtouch = new SoundTouch;
 			if (!p_soundtouch) return 0;
 			if (p_soundtouch)
@@ -157,16 +155,18 @@ public:
 		if (p_soundtouch)
 		{
 			t_size sample_count = chunk->get_sample_count();
-			size_t out_samples_gen = BUFFER_SIZE;
+			
 			audio_sample * current = chunk->get_data();
 			p_soundtouch->putSamples(current, sample_count);
+			size_t out_samples_gen = p_soundtouch->numSamples();
+			auto buffer = std::make_unique<float[]>(out_samples_gen*m_ch);
 			while (out_samples_gen > 0)
 			{
-				out_samples_gen = p_soundtouch->receiveSamples(buffer_, out_samples_gen);
+				out_samples_gen = p_soundtouch->receiveSamples(buffer.get(), out_samples_gen);
 				if (out_samples_gen != 0)
 				{
 					audio_chunk * chunk = insert_chunk(out_samples_gen * m_ch);
-					chunk->set_data(buffer_, out_samples_gen, m_ch, m_rate, m_ch_mask);
+					chunk->set_data(buffer.get(), out_samples_gen, m_ch, m_rate, m_ch_mask);
 				}
 			}
 		}
@@ -225,34 +225,47 @@ class dsp_tempo : public dsp_impl_base
 	RubberBandStretcher * rubber;
 	float **plugbuf;
 	float **m_scratch;
-	float* buffer_;
 	int m_rate, m_ch, m_ch_mask;
 	int pitch_shifter;
 	float tempo_amount;
 	bool st_enabled;
 private:
+
+
+	
+
+
 	void flushchunks()
 	{
 		if (rubber)
 		{
+			t_size samples = rubber->available();
+			std::unique_ptr<std::unique_ptr<float[]>[]>
+				m_proc = std::make_unique<std::unique_ptr<float[]>[]>(m_ch);
+			for (int i{ 0 }; i < m_ch; ++i)
+				m_proc[i] = std::make_unique<float[]>(samples);
 			while (1)
 			{
 				t_size samples = rubber->available();
 				if (!samples)return;
-				samples = rubber->retrieve(m_scratch, samples);
-				if (samples)
+				samples = rubber->retrieve((float**)m_proc.get(), samples);
 				{
+					auto buffer_ = std::make_unique<float[]>(samples * m_ch);
+					if (samples)
+					{
 
-					for (int c = 0; c < m_ch; ++c) {
-						int j = 0;
-						while (j < samples) {
-							buffer_[j * m_ch + c] = m_scratch[c][j];
-							++j;
+						for (int c = 0; c < m_ch; ++c) {
+							int j = 0;
+							while (j < samples) {
+								buffer_[j * m_ch + c] = m_proc[c][j];
+								++j;
+							}
 						}
+						audio_chunk* chunk = insert_chunk(samples * m_ch);
+						chunk->set_data(buffer_.get(), samples, m_ch, m_rate);
 					}
-					audio_chunk * chunk = insert_chunk(samples*m_ch);
-					chunk->set_data(buffer_, samples, m_ch, m_rate);
 				}
+			
 			}
 		}
 
@@ -263,10 +276,7 @@ public:
 	{
 		p_soundtouch = NULL;
 		rubber = NULL;
-		plugbuf = NULL;
-		m_scratch = NULL;
 		st_enabled = false;
-		buffer_ = NULL;
 		pitch_shifter = 0;
 		parse_preset(tempo_amount, pitch_shifter, st_enabled, in);
 	}
@@ -274,21 +284,6 @@ public:
 		if (rubber)
 		{
 			flushchunks();
-
-			for (int c = 0; c < m_ch; ++c)
-			{
-				delete[] plugbuf[c]; plugbuf[c] = NULL;
-				delete[] m_scratch[c]; m_scratch[c] = NULL;
-			}
-			if (buffer_)
-			{
-				delete[] buffer_;
-				buffer_ = NULL;
-			}
-			delete[] plugbuf;
-			delete[] m_scratch;
-			m_scratch = NULL;
-			plugbuf = NULL;
 			delete rubber;
 			rubber = 0;
 
@@ -297,11 +292,6 @@ public:
 		if (p_soundtouch)
 		{
 			p_soundtouch->clear();
-			if (buffer_)
-			{
-				delete[] buffer_;
-				buffer_ = NULL;
-			}
 			delete p_soundtouch;
 			p_soundtouch = NULL;
 		}
@@ -373,42 +363,19 @@ public:
 					rubber = NULL;
 
 				}
-				if (plugbuf) {
-					for (int c = 0; c < m_ch; ++c) delete[] plugbuf[c];
-					delete[] plugbuf;
-				}
-				if (m_scratch) {
-					for (int c = 0; c < m_ch; ++c) delete[] m_scratch[c];
-					delete[] m_scratch;
-				}
-				if (buffer_)
-				{
-					delete[] buffer_;
-					buffer_ = NULL;
-				}
-				buffer_ = new float[BUFFER_SIZE_RBTEMPO*m_ch * 64];
-
 				rubber = new RubberBandStretcher(m_rate, m_ch, options, 1.1, 1.0);
 				rubber->setTimeRatio(ratios);
-				m_scratch = new float *[m_ch];
-				plugbuf = new float *[m_ch];
 				if (!rubber) return 0;
 				//	rubber->setMaxProcessSize(BUFFER_SIZE_RBTEMPO*m_ch);
-				for (int c = 0; c < m_ch; ++c) plugbuf[c] = new float[BUFFER_SIZE_RBTEMPO * 64];
-				for (int c = 0; c < m_ch; ++c) m_scratch[c] = new float[BUFFER_SIZE_RBTEMPO * 64];
 				st_enabled = true;
 			}
 			else if (pitch_shifter == 0)
 			{
 				if (p_soundtouch)
 				{
-					delete[] buffer_;
-					buffer_ = NULL;
 					delete p_soundtouch;
 					p_soundtouch = NULL;
 				}
-
-				buffer_ = new float[BUFFER_SIZE*m_ch];
 				p_soundtouch = new SoundTouch;
 				if (!p_soundtouch) return 0;
 				if (p_soundtouch)
@@ -434,24 +401,30 @@ public:
 			audio_sample * current = chunk->get_data();
 			int processed = 0;
 			size_t outTotal = 0;
-
+			size_t out_samples_gen = rubber->getSamplesRequired();
 			while (processed < sample_count)
 			{
 				size_t out_samples_gen = rubber->getSamplesRequired();
 				int inchunk = min(sample_count - processed, out_samples_gen);
+				{
+					std::unique_ptr<std::unique_ptr<float[]>[]>
+						m_proc = std::make_unique<std::unique_ptr<float[]>[]>(m_ch);
+					for (int i{ 0 }; i < m_ch; ++i)
+						m_proc[i] = std::make_unique<float[]>(inchunk);
 
-				for (int i = 0; i < inchunk; i++) {
-					for (int j = 0; j < m_ch; j++) {
-						plugbuf[j][i] = *current++;
+					for (int i = 0; i < inchunk; i++) {
+						for (int j = 0; j < m_ch; j++) {
+							m_proc[j][i] = *current++;
+						}
+					}
+					rubber->process((float**)m_proc.get(), inchunk, false);
+					processed += inchunk;
+					if (rubber->available())
+					{
+						flushchunks();
 					}
 				}
-
-				rubber->process(plugbuf, inchunk, false);
-				processed += inchunk;
-				if (rubber->available())
-				{
-					flushchunks();
-				}
+				
 
 			}
 
@@ -460,16 +433,17 @@ public:
 		else if (p_soundtouch && pitch_shifter == 0)
 		{
 			t_size sample_count = chunk->get_sample_count();
-			size_t out_samples_gen = BUFFER_SIZE;
 			audio_sample * current = chunk->get_data();
 			p_soundtouch->putSamples(current, sample_count);
+			size_t out_samples_gen = p_soundtouch->numSamples();
+			auto buffer = std::make_unique<float[]>(out_samples_gen * m_ch);
 			while (out_samples_gen > 0)
 			{
-				out_samples_gen = p_soundtouch->receiveSamples(buffer_, out_samples_gen);
+				out_samples_gen = p_soundtouch->receiveSamples(buffer.get(), out_samples_gen);
 				if (out_samples_gen != 0)
 				{
-					audio_chunk * chunk = insert_chunk(out_samples_gen * m_ch);
-					chunk->set_data(buffer_, out_samples_gen, m_ch, m_rate, m_ch_mask);
+					audio_chunk* chunk = insert_chunk(out_samples_gen * m_ch);
+					chunk->set_data(buffer.get(), out_samples_gen, m_ch, m_rate, m_ch_mask);
 				}
 			}
 		}
@@ -484,10 +458,6 @@ public:
 		if (p_soundtouch) {
 			p_soundtouch->clear();
 
-		}
-		if (rubber)
-		{
-			flushchunks();
 		}
 		m_rate = 0;
 		m_ch = 0;
@@ -546,7 +516,6 @@ public:
 	dsp_rate(dsp_preset const & in) : pitch_amount(0.00), m_rate(0), m_ch(0), m_ch_mask(0)
 	{
 		p_soundtouch = 0;
-		buffer_ = NULL;
 		st_enabled = false;
 		parse_preset(pitch_amount, st_enabled, in);
 
@@ -555,8 +524,6 @@ public:
 		if (p_soundtouch)
 		{
 			p_soundtouch->clear();
-			delete[] buffer_;
-			buffer_ = NULL;
 			delete p_soundtouch;
 			p_soundtouch = 0;
 		}
@@ -608,7 +575,6 @@ public:
 		if (chunk->get_srate() != m_rate || chunk->get_channels() != m_ch || chunk->get_channel_config() != m_ch_mask)
 		{
 			if (p_soundtouch)delete p_soundtouch;
-			if (buffer_)delete[] buffer_;
 
 
 			m_rate = chunk->get_srate();
@@ -620,22 +586,22 @@ public:
 			p_soundtouch->setChannels(m_ch);
 			p_soundtouch->setRateChange(pitch_amount);
 			st_enabled = true;
-			buffer_ = new float[BUFFER_SIZE*m_ch];
 
 		}
 		if (p_soundtouch && st_enabled)
 		{
 			t_size sample_count = chunk->get_sample_count();
-			size_t out_samples_gen = BUFFER_SIZE;
 			audio_sample * current = chunk->get_data();
 			p_soundtouch->putSamples(current, sample_count);
+			size_t out_samples_gen = p_soundtouch->numSamples();
+			auto buffer = std::make_unique<float[]>(out_samples_gen * m_ch);
 			while (out_samples_gen > 0)
 			{
-				out_samples_gen = p_soundtouch->receiveSamples(buffer_, out_samples_gen);
+				out_samples_gen = p_soundtouch->receiveSamples(buffer.get(), out_samples_gen);
 				if (out_samples_gen != 0)
 				{
-					audio_chunk * chunk = insert_chunk(out_samples_gen * m_ch);
-					chunk->set_data(buffer_, out_samples_gen, m_ch, m_rate, m_ch_mask);
+					audio_chunk* chunk = insert_chunk(out_samples_gen * m_ch);
+					chunk->set_data(buffer.get(), out_samples_gen, m_ch, m_rate, m_ch_mask);
 				}
 			}
 		}

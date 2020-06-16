@@ -59,6 +59,25 @@ class dsp_pitch : public dsp_impl_base
 	bool st_enabled;
 	metadb_handle_ptr current_track;
 	pfc::array_t<audio_sample>buf;
+private:
+	void flushchunks()
+	{
+		if (p_soundtouch)
+		{
+			size_t out_samples_gen = p_soundtouch->numSamples();
+			buf.grow_size(out_samples_gen * m_ch);
+			while (out_samples_gen > 0)
+			{
+				out_samples_gen = p_soundtouch->receiveSamples(buf.get_ptr(), out_samples_gen);
+				if (out_samples_gen != 0)
+				{
+					audio_chunk* chunk = insert_chunk(out_samples_gen * m_ch);
+					chunk->set_data(buf.get_ptr(), out_samples_gen, m_ch, m_rate, m_ch_mask);
+				}
+			}
+		}
+		
+	}
 public:
 	dsp_pitch(dsp_preset const & in) : pitch_amount(0.00), m_rate(0), m_ch(0), m_ch_mask(0)
 	{
@@ -112,6 +131,7 @@ public:
 
 		if (chunk->get_srate() != m_rate || chunk->get_channels() != m_ch || chunk->get_channel_config() != m_ch_mask)
 		{
+			flushchunks();
 
 			m_rate = chunk->get_srate();
 			m_ch = chunk->get_channels();
@@ -149,20 +169,12 @@ public:
 		}
 		if (p_soundtouch)
 		{
+		
 			t_size sample_count = chunk->get_sample_count();
 			audio_sample * current = chunk->get_data();
 			p_soundtouch->putSamples(current, sample_count);
-			size_t out_samples_gen = p_soundtouch->numSamples();
-			buf.grow_size(out_samples_gen * m_ch);
-			while (out_samples_gen > 0)
-			{
-				out_samples_gen = p_soundtouch->receiveSamples(buf.get_ptr(), out_samples_gen);
-				if (out_samples_gen != 0)
-				{
-					audio_chunk * chunk = insert_chunk(out_samples_gen * m_ch);
-					chunk->set_data(buf.get_ptr(), out_samples_gen, m_ch, m_rate, m_ch_mask);
-				}
-			}
+			flushchunks();
+			
 		}
 		return false;
 	}
@@ -255,6 +267,21 @@ private:
 			}
 		}
 
+		if (p_soundtouch)
+		{
+			size_t out_samples_gen = p_soundtouch->numSamples();
+			auto buffer = std::make_unique<float[]>(out_samples_gen * m_ch);
+			while (out_samples_gen > 0)
+			{
+				out_samples_gen = p_soundtouch->receiveSamples(buffer.get(), out_samples_gen);
+				if (out_samples_gen != 0)
+				{
+					audio_chunk* chunk = insert_chunk(out_samples_gen * m_ch);
+					chunk->set_data(buffer.get(), out_samples_gen, m_ch, m_rate, m_ch_mask);
+				}
+			}
+		}
+
 	}
 
 public:
@@ -269,7 +296,6 @@ public:
 	~dsp_tempo() {
 		if (rubber)
 		{
-			flushchunks();
 			delete rubber;
 			rubber = 0;
 
@@ -334,12 +360,16 @@ public:
 
 		if (chunk->get_srate() != m_rate || chunk->get_channels() != m_ch || chunk->get_channel_config() != m_ch_mask)
 		{
+			flushchunks();
+
+
 			m_rate = chunk->get_srate();
 			m_ch = chunk->get_channels();
 			m_ch_mask = chunk->get_channel_config();
 
 			if (pitch_shifter == 1)
 			{
+				
 				RubberBandStretcher::Options options = RubberBandStretcher::DefaultOptions | RubberBandStretcher::OptionProcessRealTime | RubberBandStretcher::OptionThreadingNever;
 				float ratios = 1. / (1. + (tempo_amount / 100.));
 				//	ratios = ((ratios - 0.5) * 1000 );
@@ -409,17 +439,7 @@ public:
 			t_size sample_count = chunk->get_sample_count();
 			audio_sample * current = chunk->get_data();
 			p_soundtouch->putSamples(current, sample_count);
-			size_t out_samples_gen = p_soundtouch->numSamples();
-			auto buffer = std::make_unique<float[]>(out_samples_gen * m_ch);
-			while (out_samples_gen > 0)
-			{
-				out_samples_gen = p_soundtouch->receiveSamples(buffer.get(), out_samples_gen);
-				if (out_samples_gen != 0)
-				{
-					audio_chunk* chunk = insert_chunk(out_samples_gen * m_ch);
-					chunk->set_data(buffer.get(), out_samples_gen, m_ch, m_rate, m_ch_mask);
-				}
-			}
+			flushchunks();
 		}
 		return false;
 	}
@@ -482,6 +502,25 @@ class dsp_rate : public dsp_impl_base
 	pfc::array_t<audio_sample>buffer;
 	bool st_enabled;
 
+private:
+	void flushchunks()
+	{
+		if (p_soundtouch)
+		{
+			size_t out_samples_gen = p_soundtouch->numSamples();
+			buffer.grow_size(out_samples_gen * m_ch);
+			while (out_samples_gen > 0)
+			{
+				out_samples_gen = p_soundtouch->receiveSamples(buffer.get_ptr(), out_samples_gen);
+				if (out_samples_gen != 0)
+				{
+					audio_chunk* chunk = insert_chunk(out_samples_gen * m_ch);
+					chunk->set_data(buffer.get_ptr(), out_samples_gen, m_ch, m_rate, m_ch_mask);
+				}
+			}
+		}
+
+	}
 public:
 	dsp_rate(dsp_preset const & in) : pitch_amount(0.00), m_rate(0), m_ch(0), m_ch_mask(0)
 	{
@@ -544,7 +583,13 @@ public:
 
 		if (chunk->get_srate() != m_rate || chunk->get_channels() != m_ch || chunk->get_channel_config() != m_ch_mask)
 		{
-			if (p_soundtouch)delete p_soundtouch;
+			
+			if (p_soundtouch)
+			{
+				flushchunks();
+				delete p_soundtouch;
+		    }
+	
 
 
 			m_rate = chunk->get_srate();
@@ -563,17 +608,7 @@ public:
 			t_size sample_count = chunk->get_sample_count();
 			audio_sample * current = chunk->get_data();
 			p_soundtouch->putSamples(current, sample_count);
-			size_t out_samples_gen = p_soundtouch->numSamples();
-			buffer.grow_size(out_samples_gen * m_ch);
-			while (out_samples_gen > 0)
-			{
-				out_samples_gen = p_soundtouch->receiveSamples(buffer.get_ptr(), out_samples_gen);
-				if (out_samples_gen != 0)
-				{
-					audio_chunk* chunk = insert_chunk(out_samples_gen * m_ch);
-					chunk->set_data(buffer.get_ptr(), out_samples_gen, m_ch, m_rate, m_ch_mask);
-				}
-			}
+			flushchunks();
 		}
 		return false;
 	}

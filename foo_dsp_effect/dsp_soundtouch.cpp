@@ -62,7 +62,7 @@ class dsp_pitch : public dsp_impl_base
 private:
 	void flushchunks()
 	{
-		if (p_soundtouch)
+		if (p_soundtouch && st_enabled)
 		{
 			size_t out_samples_gen = p_soundtouch->numSamples();
 			buf.grow_size(out_samples_gen * m_ch);
@@ -107,10 +107,12 @@ public:
 	}
 
 	virtual void on_endoftrack(abort_callback & p_abort) {
+		flushchunks();
 	}
 
 	virtual void on_endofplayback(abort_callback & p_abort) {
 		//same as flush, only at end of playback
+		flushchunks();
 	}
 
 	// The framework feeds input to our DSP using this method.
@@ -325,7 +327,7 @@ public:
 	}
 
 	virtual void on_endoftrack(abort_callback & p_abort) {
-		if (rubber && st_enabled)
+		if (st_enabled)
 		{
 			flushchunks();
 		}
@@ -333,7 +335,7 @@ public:
 
 	virtual void on_endofplayback(abort_callback & p_abort) {
 		//same as flush, only at end of playback
-		if (rubber &&st_enabled)
+		if (st_enabled)
 		{
 			flushchunks();
 		}
@@ -557,12 +559,14 @@ public:
 	virtual void on_endoftrack(abort_callback & p_abort) {
 		// This method is called when a track ends.
 		// We need to do the same thing as flush(), so we just call it.
+		flushchunks();
 
 	}
 
 	virtual void on_endofplayback(abort_callback & p_abort) {
 		// This method is called on end of playback instead of flush().
 		// We need to do the same thing as flush(), so we just call it.
+		flushchunks();
 
 	}
 

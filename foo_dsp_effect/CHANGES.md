@@ -1,3 +1,14 @@
+0.42:
+* Rewrote sample buffer allocation logic for pitch/tempo/playback rate rate.
+* Flush audio data for pitch/tempo/playback rate properly this time.
+* Updated SoundTouch.
+
+0.41
+* Tried to mitigate crashes in DirectX DMO based DSPs.
+* Added tag parsing for pitch DSP when enabled.
+  - "pitch_amt" metadata can be used to specify pitch.
+  - Specify pitch offset in semitones eg. "5.0" or "-5.0"
+
 0.40
 * Reorganized all dialogs, fixed sizing. (beta 1)
 * Fixed issues with changing filter in IIR filter UI element. (beta 1)

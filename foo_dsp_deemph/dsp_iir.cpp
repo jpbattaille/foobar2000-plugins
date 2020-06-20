@@ -1,6 +1,5 @@
 #define _WIN32_WINNT 0x0501
 #include "../SDK/foobar2000.h"
-#include "../ATLHelpers/ATLHelpers.h"
 #include "iirfilters.h"
 
 

@@ -1,12 +1,11 @@
 #include "../helpers/foobar2000+atl.h"
-#include "../../libPPUI/win32_utility.h"
-#include "../../libPPUI/win32_op.h" // WIN32_OP()
+#include <libPPUI/win32_utility.h>
+#include <libPPUI/win32_op.h> // WIN32_OP()
 #include "../helpers/BumpableElem.h"
 #include "resource.h"
 #include "iirfilters.h"
 #include "dsp_guids.h"
 
-namespace {
 	class CEditMod : public CWindowImpl<CEditMod, CEdit >
 	{
 	public:
@@ -159,10 +158,10 @@ namespace {
 		enum
 		{
 			FreqMin = 0,
-			FreqMax = 40000,
+			FreqMax = 20000,
 			FreqRangeTotal = FreqMax,
-			GainMin = -100,
-			GainMax = 100,
+			GainMin = -40,
+			GainMax = 40,
 			GainRangeTotal = GainMax - GainMin
 		};
 
@@ -217,17 +216,11 @@ namespace {
 				slider_gain.SetPos(p_gain);
 				CWindow w = GetDlgItem(IDC_IIRTYPE1);
 				::SendMessage(w, CB_SETCURSEL, p_type, 0);
-				if (p_type == 10)
-				{
-					slider_freq.EnableWindow(FALSE);
-					slider_gain.EnableWindow(FALSE);
-				}
-				else
-				{
-					slider_freq.EnableWindow(TRUE);
-					slider_gain.EnableWindow(TRUE);
-				}
-				RefreshLabel(p_freq, p_gain, p_type);
+				
+				slider_freq.ShowWindow(HasParameters(p_type));
+				slider_gain.ShowWindow(HasParameters(p_type));
+				
+				RefreshControls(p_freq, p_gain, p_type);
 			}
 		}
 
@@ -237,29 +230,15 @@ namespace {
 			pitch_edit.AttachToDlgItem(m_hWnd);
 			pitch_edit.SubclassWindow(GetDlgItem(IDC_IIRQ1));
 			slider_freq = GetDlgItem(IDC_IIRFREQ);
-			slider_freq.SetRangeMin(0);
-			slider_freq.SetRangeMax(FreqMax);
+			slider_freq.SetRange(0,FreqMax);
 			slider_gain = GetDlgItem(IDC_IIRGAIN);
 			slider_gain.SetRange(GainMin, GainMax);
 			{
 
 				bool enabled;
-				dsp_iir::parse_preset(p_freq, p_gain, p_type,p_qual, enabled, m_initData);
-				if (p_type == 10)
-				{
-					slider_freq.EnableWindow(FALSE);
-					slider_gain.EnableWindow(FALSE);
-				}
-				else
-				{
-					slider_freq.EnableWindow(TRUE);
-					slider_gain.EnableWindow(TRUE);
-				}
-
-
-
-				slider_freq.SetPos(p_freq);
-				slider_gain.SetPos(p_gain);
+				dsp_iir::parse_preset(p_freq, p_gain, p_type,p_qual, enabled, m_initData);			
+						
+		
 				CWindow w = GetDlgItem(IDC_IIRTYPE);
 				uSendMessageText(w, CB_ADDSTRING, 0, "Resonant Lowpass");
 				uSendMessageText(w, CB_ADDSTRING, 0, "Resonant Highpass");
@@ -274,7 +253,7 @@ namespace {
 				uSendMessageText(w, CB_ADDSTRING, 0, "CD De-emphasis");
 				uSendMessageText(w, CB_ADDSTRING, 0, "High shelf");
 				::SendMessage(w, CB_SETCURSEL, p_type, 0);
-				RefreshLabel(p_freq, p_gain, p_type);
+				RefreshControls(p_freq, p_gain, p_type);
 
 			}
 			return TRUE;
@@ -297,58 +276,52 @@ namespace {
 				dsp_iir::make_preset(p_freq, p_gain, p_type,p_qual, true, preset);
 				m_callback.on_preset_changed(preset);
 			}
-			if (p_type == 10) {
-				slider_freq.EnableWindow(FALSE);
-				slider_gain.EnableWindow(FALSE);
-			}
-			else
-			{
-				slider_freq.EnableWindow(TRUE);
-				slider_gain.EnableWindow(TRUE);
-			}
-			RefreshLabel(p_freq, p_gain, p_type);
+			
+			RefreshControls(p_freq, p_gain, p_type);
 
 		}
+
+		BOOL HasParameters(int p_type)
+		{
+			return !((p_type == RIAA_CD) || (p_type == RIAA_phono));
+		}
+
 		void OnScroll(UINT scrollid, int id, CWindow window)
 		{
 			CWindow w;
 			p_freq = slider_freq.GetPos();
 			p_gain = slider_gain.GetPos();
 			p_type = SendDlgItemMessage(IDC_IIRTYPE, CB_GETCURSEL);
+
 			if (LOWORD(scrollid) != SB_THUMBTRACK)
 			{
 				dsp_preset_impl preset;
 				dsp_iir::make_preset(p_freq, p_gain, p_type,p_qual, true, preset);
 				m_callback.on_preset_changed(preset);
 			}
-			if (p_type == 10) {
-				slider_freq.EnableWindow(FALSE);
-				slider_gain.EnableWindow(FALSE);
-			}
-			else
-			{
-				slider_freq.EnableWindow(TRUE);
-				slider_gain.EnableWindow(TRUE);
-			}
-			RefreshLabel(p_freq, p_gain, p_type);
+			
+			RefreshControls(p_freq, p_gain, p_type);
 
 		}
 
 
-		void RefreshLabel(int p_freq, int p_gain, int p_type)
+		void RefreshControls(int p_freq, int p_gain, int p_type)
 		{
-			pfc::string_formatter msg;
+			slider_freq.ShowWindow(HasParameters(p_type));
+			slider_gain.ShowWindow(HasParameters(p_type));
 
-			if (p_type == 10)
+			pfc::string_formatter msg;
+			if ( !HasParameters(p_type))
 			{
-				msg << "Frequency: disabled";
-				::uSetDlgItemText(*this, IDC_IIRFREQINFO, msg);
 				msg.reset();
-				msg << "Gain: disabled";
+				::uSetDlgItemText(*this, IDC_IIRFREQINFO, msg);
 				::uSetDlgItemText(*this, IDC_IIRGAININFO, msg);
 				return;
 
 			}
+
+			slider_freq.SetPos(p_freq);
+			slider_gain.SetPos(p_gain);
 			msg << "Frequency: ";
 			msg << pfc::format_int(p_freq) << " Hz";
 			::uSetDlgItemText(*this, IDC_IIRFREQINFO, msg);
@@ -364,6 +337,7 @@ namespace {
 			pitch_s = sWindowText;
 			pitch_edit.SetWindowText(sWindowText);
 		}
+
 		int p_freq;
 		int p_gain;
 		int p_type;
@@ -407,10 +381,10 @@ namespace {
 		enum
 		{
 			FreqMin = 0,
-			FreqMax = 40000,
+			FreqMax = 15000,
 			FreqRangeTotal = FreqMax,
-			GainMin = -100,
-			GainMax = 100,
+			GainMin = -40,
+			GainMax = 40,
 			GainRangeTotal = GainMax - GainMin
 		};
 		BEGIN_MSG_MAP(uielem_iir)
@@ -459,8 +433,8 @@ namespace {
 
 			ret.m_min_width = MulDiv(420, DPI.cx, 96);
 			ret.m_min_height = MulDiv(140, DPI.cy, 96);
-			ret.m_max_width = MulDiv(420, DPI.cx, 96);
-			ret.m_max_height = MulDiv(140, DPI.cy, 96);
+			ret.m_max_width = 10000;
+			ret.m_max_height = 10000;
 
 			// Deal with WS_EX_STATICEDGE and alike that we might have picked from host
 			ret.adjustForWindow(*this);
@@ -491,17 +465,13 @@ namespace {
 				static_api_ptr_t<dsp_config_manager>()->core_enable_dsp(preset, dsp_config_manager::default_insert_last);
 
 			}
-			if (p_type == 10) {
-				slider_freq.EnableWindow(FALSE);
-				slider_gain.EnableWindow(FALSE);
-			}
-			else
-			{
-				slider_freq.EnableWindow(TRUE);
-				slider_gain.EnableWindow(TRUE);
-			}
-			RefreshLabel(p_freq, p_gain, p_type);
+			RefreshControls(p_freq, p_gain, p_type);
 
+		}
+
+		BOOL HasParameters(int p_type)
+		{
+			return !((p_type == RIAA_CD) || (p_type == RIAA_phono));
 		}
 
 		void GetEditText()
@@ -617,18 +587,17 @@ namespace {
 			p_gain = slider_gain.GetPos();
 			p_type = SendDlgItemMessage(IDC_IIRTYPE1, CB_GETCURSEL);
 			IIR_enabled = IsIIREnabled();
-			RefreshLabel(p_freq, p_gain, p_type);
+			RefreshControls(p_freq, p_gain, p_type);
 
 
 		}
 
 		void SetConfig()
 		{
-			slider_freq.SetPos(p_freq);
-			slider_gain.SetPos(p_gain);
+		
 			CWindow w = GetDlgItem(IDC_IIRTYPE1);
 			::SendMessage(w, CB_SETCURSEL, p_type, 0);
-			RefreshLabel(p_freq, p_gain, p_type);
+			RefreshControls(p_freq, p_gain, p_type);
 
 		}
 
@@ -637,8 +606,7 @@ namespace {
 			pitch_edit.AttachToDlgItem(m_hWnd);
 			pitch_edit.SubclassWindow(GetDlgItem(IDC_IIRQ));
 			slider_freq = GetDlgItem(IDC_IIRFREQ1);
-			slider_freq.SetRangeMin(0);
-			slider_freq.SetRangeMax(FreqMax);
+			slider_freq.SetRange(0, FreqMax);
 			slider_gain = GetDlgItem(IDC_IIRGAIN1);
 			slider_gain.SetRange(GainMin, GainMax);
 			CWindow w = GetDlgItem(IDC_IIRTYPE1);
@@ -663,20 +631,22 @@ namespace {
 			return TRUE;
 		}
 
-		void RefreshLabel(int p_freq, int p_gain, int p_type)
+		void RefreshControls(int p_freq, int p_gain, int p_type)
 		{
+			slider_freq.ShowWindow(HasParameters(p_type));
+			slider_gain.ShowWindow(HasParameters(p_type));
 			pfc::string_formatter msg;
-
-			if (p_type == 10)
+		
+			if (!HasParameters(p_type))
 			{
-				msg << "Frequency: disabled";
-				::uSetDlgItemText(*this, IDC_IIRFREQINFO1, msg);
 				msg.reset();
-				msg << "Gain: disabled";
-				::uSetDlgItemText(*this, IDC_IIRGAININFO1, msg);
+				::uSetDlgItemText(*this, IDC_IIRFREQINFO, msg);
+				::uSetDlgItemText(*this, IDC_IIRGAININFO, msg);
 				return;
-
 			}
+
+			slider_freq.SetPos(p_freq);
+			slider_gain.SetPos(p_gain);
 			msg << "Frequency: ";
 			msg << pfc::format_int(p_freq) << " Hz";
 			::uSetDlgItemText(*this, IDC_IIRFREQINFO1, msg);
@@ -742,6 +712,3 @@ namespace {
 
 	};
 	static service_factory_single_t<myElem_t> g_myElemFactory;
-
-
-}
